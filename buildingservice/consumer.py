@@ -1,15 +1,14 @@
 import json
 from threading import Thread
 
-from bson import ObjectId
-from bson.errors import InvalidId
 from kafka import KafkaConsumer
-from pymongo.errors import WriteError
+from pymodm.errors import ValidationError
 
-from buildingservice import buildings, logger
+from buildingservice import logger
 from buildingservice.producer import produce_data
 from buildingservice.shared.error_handlers import handle_kafka_errors
 from buildingservice.shared.exceptions import KafkaMessageException
+from buildingservice.model import Building
 from config import KAFKA_HOST, KAFKA_PORT, KAFKA_PREFIX
 
 
@@ -35,36 +34,34 @@ def handle_message(message):
         raise KafkaMessageException('JSON-Object with "id", "command_type" and "data" expected.', message_id)
 
     command_type = message['command_type']
-    if not any(command == command_type for command in ['CREATE', 'GET_ALL', 'GET_BY_ID', 'GET_BY_FILTER']):
+    if not any(command == command_type for command in ['CREATE', 'GET_ALL', 'GET_BY_ID']):
         raise KafkaMessageException('command_type must be either "CREATE", "GET_ALL", "GET_BY_ID", "GET_BY_FILTER".',
                                     message_id)
 
     data = message['data']
     status_code = 200
     if command_type == 'CREATE':
+        data = json.loads(data)
         try:
-            message['data'] = buildings.insert(json.loads(data))
-        except WriteError:
-            raise KafkaMessageException(F'Validation failed for {data}. Reference API docs.', message_id, 422)
-        status_code = 201
-        logger.warn(F'Created {data}')
+            building = Building(**data).save().to_dict()
+            message['data'] = building
+            logger.warn(F'Created {building}')
+        except ValidationError as error:
+            logger.error(error.message)
+            raise KafkaMessageException(error.message, message_id, 422)
 
-    if command_type == 'GET_ALL':
-        data = list(buildings.find())
+    elif command_type == 'GET_ALL':
+        data = [building.to_dict() for building in Building.objects.all()]
         logger.warn(F'Found {len(data)} entries')
 
-    if command_type == 'GET_BY_ID':
-        object_id = data['_id']
-        try:
-            object_id = ObjectId(object_id)
-        except (InvalidId, TypeError, AssertionError):
-            raise KafkaMessageException(F'Invalid ObjectId: {object_id}', message_id)
-        data = list(buildings.find({"_id": ObjectId(object_id)}))
+    elif command_type == 'GET_BY_ID':
+        internal_id = data['internal_id']
+        data = [building.to_dict() for building in Building.objects.raw({'_id': internal_id})]
+        if not data:
+            status_code = 404
+        else:
+            data = data[0]
         logger.warn(F'Found {data}')
-
-    if command_type == 'GET_BY_FILTER':
-        data = buildings.find({json.dumps(data)})
-        logger.warn(F'Found {len(data)} entries')
 
     message['data'] = data
     message['status_code'] = status_code

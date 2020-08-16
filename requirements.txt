@@ -30,3 +30,5 @@ tabulate==0.8.7
 wcwidth==0.2.4
 Werkzeug==1.0.1
 zipp==3.1.0
+
+pymodm~=0.4.3
