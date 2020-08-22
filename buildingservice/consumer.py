@@ -47,7 +47,7 @@ def handle_get_by_id(data, message_id):
     buildings = [building.to_dict() for building in Building.objects.raw({'_id': internal_id})]
     if not data:
         logger.warn(F'Not found: {internal_id}')
-        return None, 404
+        return {}, 404
     else:
         building = buildings[0]
         logger.warn(F'Found {building}')
