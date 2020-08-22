@@ -1,4 +1,3 @@
-import json
 from threading import Thread
 
 from kafka import KafkaConsumer
@@ -9,6 +8,7 @@ from buildingservice.producer import produce_data
 from buildingservice.shared.error_handlers import handle_kafka_errors
 from buildingservice.shared.exceptions import KafkaMessageException
 from buildingservice.model import Building
+from buildingservice.shared.util import parse_message
 from config import KAFKA_HOST, KAFKA_PORT, KAFKA_PREFIX
 
 
@@ -26,43 +26,42 @@ class ApartmentCommandConsumer(Thread):
             handle_message(message)
 
 
+def handle_create(data, message_id):
+    try:
+        building = Building(**data).save().to_dict()
+        logger.warn(F'Created {building}')
+        return building, 201
+    except ValidationError as error:
+        logger.error(error.message)
+        raise KafkaMessageException(error.message, message_id, 422)
+
+
+def handle_get_all(data, message_id):
+    data = [building.to_dict() for building in Building.objects.all()]
+    logger.warn(F'Found {len(data)} entries')
+    return data, 200
+
+
+def handle_get_by_id(data, message_id):
+    internal_id = data['internal_id']
+    buildings = [building.to_dict() for building in Building.objects.raw({'_id': internal_id})]
+    if not data:
+        logger.warn(F'Not found: {internal_id}')
+        return None, 404
+    else:
+        building = buildings[0]
+        logger.warn(F'Found {building}')
+        return building, 200
+
+
+ALLOWED_MESSAGE_TYPES = ['CREATE', 'GET_ALL', 'GET_BY_ID']
+METHOD_MAPPING = {'CREATE': handle_create,
+                  'GET_ALL': handle_get_all,
+                  'GET_BY_ID': handle_get_by_id}
+
+
 @handle_kafka_errors
 def handle_message(message):
-    message = json.loads(message.value.decode('utf-8'))
-    message_id = message['id']
-    if not all(key in message for key in ['command_type', 'data']):
-        raise KafkaMessageException('JSON-Object with "id", "command_type" and "data" expected.', message_id)
-
-    command_type = message['command_type']
-    if not any(command == command_type for command in ['CREATE', 'GET_ALL', 'GET_BY_ID']):
-        raise KafkaMessageException('command_type must be either "CREATE", "GET_ALL", "GET_BY_ID", "GET_BY_FILTER".',
-                                    message_id)
-
-    data = message['data']
-    status_code = 200
-    if command_type == 'CREATE':
-        data = json.loads(data)
-        try:
-            building = Building(**data).save().to_dict()
-            message['data'] = building
-            logger.warn(F'Created {building}')
-        except ValidationError as error:
-            logger.error(error.message)
-            raise KafkaMessageException(error.message, message_id, 422)
-
-    elif command_type == 'GET_ALL':
-        data = [building.to_dict() for building in Building.objects.all()]
-        logger.warn(F'Found {len(data)} entries')
-
-    elif command_type == 'GET_BY_ID':
-        internal_id = data['internal_id']
-        data = [building.to_dict() for building in Building.objects.raw({'_id': internal_id})]
-        if not data:
-            status_code = 404
-        else:
-            data = data[0]
-        logger.warn(F'Found {data}')
-
-    message['data'] = data
-    message['status_code'] = status_code
-    produce_data(message)
+    data, command_type, message_id = parse_message(message, ALLOWED_MESSAGE_TYPES)
+    response_data, status_code = METHOD_MAPPING[command_type](data, message_id)
+    produce_data({'data': response_data, 'status_code': status_code, 'id': message_id})

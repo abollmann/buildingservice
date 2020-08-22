@@ -2,6 +2,7 @@ from flask import Flask, logging
 from flask.logging import default_handler
 from pymodm import connect
 
+from buildingservice.initial_addresses import generate_initial_data
 from buildingservice.shared.json_encoder import ImprovedJSONEncoder
 from buildingservice.shared.logging_handler import LoggingHandler
 from config import *
@@ -16,9 +17,12 @@ logger.addHandler(LoggingHandler())
 
 # DATABASE CONFIG
 credentials = F'{MONGO_USER}:{MONGO_PASSWORD}@' if MONGO_USER and MONGO_PASSWORD else ''
-auth_source = '&authSource=admin' if credentials else ''
-mongo_uri = F'mongodb://{credentials}{MONGO_HOST}:{MONGO_PORT}/devopss2020db{MONGO_NAME}{auth_source}'
+auth_source = '?authSource=admin' if credentials else ''
+mongo_uri = F'mongodb://{credentials}{MONGO_HOST}:{MONGO_PORT}/devops2020db{MONGO_NAME}{auth_source}'
 connect(mongo_uri)
 
 # UTIL CONFIG
 json_encoder = ImprovedJSONEncoder()
+
+generate_initial_data()
+

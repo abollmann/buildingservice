@@ -12,11 +12,12 @@ def validate_city_code(city_code):
 def validate_internal_id(internal_id):
     if not re.fullmatch(r'^AB(([1-9])|([1][0-9]))$', internal_id):
         raise ValidationError('Invalid.')
-    if Building.objects.raw({'_id': internal_id}):
+    if list(Building.objects.raw({'_id': internal_id})):
         raise ValidationError('Must be unique.')
 
 
 class Building(MongoModel):
+    # building id from fraunhofer api
     internal_id = fields.CharField(primary_key=True, validators=[validate_internal_id])
     street = fields.CharField(required=True)
     city = fields.CharField(required=True)
