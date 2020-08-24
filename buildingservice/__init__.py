@@ -26,3 +26,4 @@ json_encoder = ImprovedJSONEncoder()
 
 generate_initial_data()
 
+import buildingservice.views

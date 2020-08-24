@@ -1,6 +1,5 @@
 from kafka import KafkaProducer
 
-from buildingservice.shared.json_encoder import encode_json
 from config import KAFKA_HOST, KAFKA_PORT, KAFKA_PREFIX
 
 producer = KafkaProducer(
@@ -12,7 +11,3 @@ def produce_log(msg):
     value = bytes(msg, encoding='utf-8')
     producer.send(F'{KAFKA_PREFIX}-buildings-logs', value=value)
 
-
-def produce_data(data):
-    value = bytes(encode_json(data), encoding='utf-8')
-    producer.send(F'{KAFKA_PREFIX}-buildings-data', value=value)
