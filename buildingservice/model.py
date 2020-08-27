@@ -24,6 +24,7 @@ class Building(MongoModel):
     city_code = fields.CharField(required=True, validators=[validate_city_code])
     house_number = fields.CharField(required=True)
     house_number_add = fields.CharField(min_length=1, max_length=1)
+    tenants = fields.ListField(fields.CharField(required=False), default=[])
 
     def to_dict(self):
         as_dict = self.to_son().to_dict()
